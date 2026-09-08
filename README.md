@@ -18,10 +18,10 @@ The main goal is to keep the base k3s environment minimal while making GPU suppo
 build [-BuilderName (optional)]
 ```
 
-produces `k3s-rootfs.tar` and `k3s-nvidia-rootfs.tar` into directory `dist`.
+produces `k3s-rootfs.tar.gz` and `k3s-nvidia-rootfs.tar.gz` into directory `dist`.
 
 ## Install
 
 ```ps
-wsl --install --name k3s --from-file .\dist\k3s-nvidia-rootfs.tar
+wsl --install --name k3s --from-file .\dist\k3s-nvidia-rootfs.tar.gz
 ```
