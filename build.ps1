@@ -84,12 +84,12 @@ nerdctl info >/dev/null 2>&1 || {
 mkdir -p "$SCRIPT_DIR/dist"
 
 nerdctl rm -f rootfs-temp >/dev/null 2>&1 || true
-nerdctl build "$SCRIPT_DIR" -f Dockerfile-base -t k3s-wsl:0.1
+nerdctl build "$SCRIPT_DIR" -f Dockerfile.base -t k3s-wsl:0.1
 nerdctl create --name rootfs-temp k3s-wsl:0.1
 nerdctl export rootfs-temp -o "$SCRIPT_DIR/dist/k3s-rootfs.tar"
 
 nerdctl rm -f rootfs-temp >/dev/null 2>&1 || true
-nerdctl build "$SCRIPT_DIR" -f Dockerfile-nvidia -t k3s-wsl:0.1-nvidia
+nerdctl build "$SCRIPT_DIR" -f Dockerfile.nvidia -t k3s-wsl:0.1-nvidia
 nerdctl create --name rootfs-temp k3s-wsl:0.1-nvidia
 nerdctl export rootfs-temp -o "$SCRIPT_DIR/dist/k3s-nvidia-rootfs.tar"
 '@
