@@ -4,7 +4,7 @@ This project is a small experiment for building a simple, reproducible k3s envir
 
 The setup bootstraps a BuildKit builder and uses it to produce:
 
-* a base image with k3s and Helm
+* a base image with k3s, nerdctl, BuildKit and Helm
 * a separate NVIDIA/CUDA image layer for GPU support
 
 During the OOBE phase, the environment installs the NVIDIA Device Plugin (NVDP) so GPU resources are available to Kubernetes
