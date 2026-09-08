@@ -33,7 +33,7 @@ RUN curl -fL \
     "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.linux-amd64.tar.gz" \
     | tar -xz -C /usr/local
 
-RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
+RUN curl -fL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
 
 COPY <<'EOF' /etc/wsl-distribution.conf
 [oobe]

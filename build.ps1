@@ -2,10 +2,10 @@ param(
     [string]$BuilderName
 )
 
-$rootfs = Join-Path $PSScriptRoot "deb-bookworm-rootfs.tar.gz"
+$rootfs = Join-Path $PSScriptRoot "deb-trixie-rootfs.tar.gz"
 if (-not (Test-Path $rootfs)) {
     Invoke-WebRequest `
-        -Uri "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-amd64/bookworm/oci/blobs/rootfs.tar.gz" `
+        -Uri "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-amd64/trixie/oci/blobs/rootfs.tar.gz" `
         -OutFile $rootfs
 }
 
@@ -34,64 +34,30 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create builder WSL '$builder'"
         }
-
-        wsl -d $builder -u root -- bash -c @'
-set -euo pipefail
-
-apt-get update
-apt-get install -y curl tar
-
-curl -fL \
-    "https://github.com/containerd/nerdctl/releases/download/v2.3.5/nerdctl-full-2.3.5-linux-amd64.tar.gz" \
-    | tar -xz -C /usr/local
-'@
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to initialize builder WSL '$builder'"
-        }
-    }
-    else {
-        Write-Host "Reusing builder distro '$builder'..."
     }
 
     $env:SCRIPT_DIR = $PSScriptRoot
     $env:WSLENV = "SCRIPT_DIR/p"
 
     wsl -d $builder -u root -- bash -c @'
-set -euo pipefail
+set -euox pipefail
 
-echo "Building inside WSL... $SCRIPT_DIR"
+apt-get update
+apt-get install -y ca-certificates podman
 
-containerd >/tmp/containerd.log 2>&1 &
+mkdir -p ./dist
 
-buildkitd \
-    --oci-worker=false \
-    --containerd-worker=true \
-    --containerd-worker-namespace=default \
-    >/tmp/buildkitd.log 2>&1 &
+podman build -t k3s-wsl:0.1 -f Dockerfile.base .
+podman create --name wsl-export-container k3s-wsl:0.1
+podman export wsl-export-container -o /tmp/k3s-rootfs.tar
+podman rm wsl-export-container
+gzip -c /tmp/k3s-rootfs.tar > ./dist/k3s-rootfs.tar.gz
 
-for i in {1..30}; do
-    nerdctl info >/dev/null 2>&1 && break
-    sleep 1
-done
-
-nerdctl info >/dev/null 2>&1 || {
-    echo "containerd failed to become ready"
-    cat /tmp/containerd.log
-    exit 1
-}
-
-mkdir -p "$SCRIPT_DIR/dist"
-
-nerdctl rm -f rootfs-temp >/dev/null 2>&1 || true
-nerdctl build "$SCRIPT_DIR" -f Dockerfile.base -t k3s-wsl:0.1
-nerdctl create --name rootfs-temp k3s-wsl:0.1
-nerdctl export rootfs-temp -o "$SCRIPT_DIR/dist/k3s-rootfs.tar"
-
-nerdctl rm -f rootfs-temp >/dev/null 2>&1 || true
-nerdctl build "$SCRIPT_DIR" -f Dockerfile.nvidia -t k3s-wsl:0.1-nvidia
-nerdctl create --name rootfs-temp k3s-wsl:0.1-nvidia
-nerdctl export rootfs-temp -o "$SCRIPT_DIR/dist/k3s-nvidia-rootfs.tar"
+podman build -t k3s-wsl:0.1-nvidia -f Dockerfile.nvidia .
+podman create --name wsl-export-container-nvidia k3s-wsl:0.1-nvidia
+podman export wsl-export-container-nvidia -o /tmp/k3s-nvidia-rootfs.tar
+podman rm wsl-export-container-nvidia
+gzip -c /tmp/k3s-nvidia-rootfs.tar > ./dist/k3s-nvidia-rootfs.tar.gz
 '@
 
     if ($LASTEXITCODE -ne 0) {
