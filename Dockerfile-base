@@ -1,0 +1,131 @@
+FROM debian:bookworm-slim
+
+ENV NERDCTL_VERSION=2.3.5
+ENV BUILDKIT_VERSION=0.24.0
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y locales && \
+    sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    sed -i -e 's/# fi_FI.UTF-8 UTF-8/fi_FI.UTF-8 UTF-8/' /etc/locale.gen && \
+    dpkg-reconfigure locales && \
+    update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:fi && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:fi
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iptables curl ca-certificates sudo \
+    policykit-1 systemd systemd-sysv libpam-systemd dbus \
+    gnupg2 jq \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fL https://get.k3s.io | \
+    INSTALL_K3S_SKIP_START=true \
+    INSTALL_K3S_SKIP_ENABLE=true \
+    sh -
+
+RUN curl -fL \
+    "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-amd64.tar.gz" \
+    | tar -xz -C /usr/local/bin
+
+RUN curl -fL \
+    "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.linux-amd64.tar.gz" \
+    | tar -xz -C /usr/local
+
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
+
+COPY <<'EOF' /etc/wsl-distribution.conf
+[oobe]
+command=/etc/wsl-oobe.sh
+defaultUid=1000
+defaultName=k3s
+EOF
+
+COPY <<'EOF' /etc/sudoers.d/k3s
+%k3s ALL=(root) NOPASSWD: /usr/local/bin/kubectl, /usr/local/bin/k3s, /usr/local/bin/nerdctl
+EOF
+
+COPY --chmod=0644 <<'EOF' /etc/profile.d/k3s.sh
+#!/bin/sh
+export KUBECONFIG=$HOME/.kube/config
+EOF
+
+COPY --chmod=0755 <<'EOF' /etc/wsl-oobe.sh
+#!/bin/bash
+echo "Waiting for k3s API..."
+until k3s kubectl get nodes >/dev/null 2>&1; do
+    sleep 1
+done
+
+echo "Waiting for node to become Ready..."
+k3s kubectl wait --for=condition=Ready node --all --timeout=120s
+install -d -m 755 /etc/skel/.kube
+install -m 600 /etc/rancher/k3s/k3s.yaml /etc/skel/.kube/config
+
+read -rp "Enter new UNIX username: " username
+adduser --uid 1000 --gecos '' "$username"
+groupadd -f k3s
+usermod -aG sudo,k3s,systemd-journal "$username"
+
+if [[ -d /etc/wsl-oobe.d ]]; then
+    for script in /etc/wsl-oobe.d/*.sh; do
+        if [[ -f "$script" ]]; then
+            sudo -u "$username" -i bash "$script"
+        fi
+    done
+fi
+
+echo "NOTE! WSL OOBE does not initialize the env. You may need to "
+echo "source /etc/profile.d/k3s.sh manually - or restart the WSL."
+EOF
+
+COPY --chmod=0755 <<'EOF' /etc/wsl-oobe.d/telepresence.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Installing Telepresence Helm chart..."
+helm install \
+  --create-namespace \
+  --namespace ambassador \
+  --set nodeAgent.enabled=true \
+  --set agentInjector.enabled=false \
+  traffic-manager oci://ghcr.io/telepresenceio/telepresence-oss
+EOF
+
+COPY <<'EOF' /etc/wsl.conf
+[boot]
+systemd=true
+EOF
+
+COPY <<'EOF' /etc/systemd/system/buildkit.service
+[Unit]
+Description=BuildKit
+After=k3s.service
+Requires=k3s.service
+
+[Service]
+ExecStart=/usr/local/bin/buildkitd --config /etc/buildkit/buildkitd.toml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+COPY <<'EOF' /etc/nerdctl/nerdctl.toml
+address = "unix:///run/k3s/containerd/containerd.sock"
+namespace = "k8s.io"
+EOF
+
+COPY <<'EOF' /etc/buildkit/buildkit.toml
+[worker.oci]
+  enabled = false
+
+[worker.containerd]
+  enabled = true
+  address = "/run/k3s/containerd/containerd.sock"
+  namespace = "k8s.io"
+EOF
+
+RUN systemctl enable k3s.service \
+    && systemctl enable buildkit.service
