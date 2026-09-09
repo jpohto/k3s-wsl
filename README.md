@@ -2,7 +2,7 @@
 
 This project is a small experiment for building a simple, reproducible k3s environment on WSL with CUDA/GPU support.
 
-The setup bootstraps a podman builder on debian trixie rootfs and uses it to produce:
+The setup bootstraps a buildkitd based builder on debian trixie rootfs and uses it to produce:
 
 * a base image with k3s, nerdctl, BuildKit and Helm
 * a separate NVIDIA/CUDA image layer for GPU support

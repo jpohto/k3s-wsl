@@ -2,10 +2,10 @@ param(
     [string]$BuilderName
 )
 
-$rootfs = Join-Path $PSScriptRoot "deb-trixie-rootfs.tar.gz"
+$rootfs = Join-Path $PSScriptRoot "deb-bookworm-rootfs.tar.gz"
 if (-not (Test-Path $rootfs)) {
     Invoke-WebRequest `
-        -Uri "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-amd64/trixie/oci/blobs/rootfs.tar.gz" `
+        -Uri "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-amd64/bookworm/oci/blobs/rootfs.tar.gz" `
         -OutFile $rootfs
 }
 
@@ -42,22 +42,40 @@ try {
     wsl -d $builder -u root -- bash -c @'
 set -euox pipefail
 
+set -euo pipefail
+
 apt-get update
-apt-get install -y ca-certificates podman
+apt-get install -y curl tar socat
 
-mkdir -p ./dist
+if [[ -z "$(command -v buildkitd)" ]]; then
+    echo "installing buildkit..."
+    curl -fL \
+        "https://github.com/moby/buildkit/releases/download/v0.33.0/buildkit-v0.33.0.linux-amd64.tar.gz" \
+        | tar -xz -C /usr/local
+fi
 
-podman build -t k3s-wsl:0.1 -f Dockerfile.base .
-podman create --name wsl-export-container k3s-wsl:0.1
-podman export wsl-export-container -o /tmp/k3s-rootfs.tar
-podman rm wsl-export-container
-gzip -c /tmp/k3s-rootfs.tar > ./dist/k3s-rootfs.tar.gz
+echo "starting buildkitd in the background..."
+buildkitd > /tmp/buildkitd.log 2>&1 &
 
-podman build -t k3s-wsl:0.1-nvidia -f Dockerfile.nvidia .
-podman create --name wsl-export-container-nvidia k3s-wsl:0.1-nvidia
-podman export wsl-export-container-nvidia -o /tmp/k3s-nvidia-rootfs.tar
-podman rm wsl-export-container-nvidia
-gzip -c /tmp/k3s-nvidia-rootfs.tar > ./dist/k3s-nvidia-rootfs.tar.gz
+for i in {1..30}; do
+    socat /dev/nul UNIX-CONNECT:/run/buildkit/buildkitd.sock 2>/dev/null && break
+    echo "waiting for buildkitd socket..."
+    sleep 1
+done
+
+buildctl b \
+  --frontend dockerfile.v0 \
+  --local context=. \
+  --local dockerfile=. \
+  --opt target=base \
+  --output type=tar | gzip > ./dist/k3s-rootfs.tar.gz
+
+buildctl b \
+  --frontend dockerfile.v0 \
+  --local context=. \
+  --local dockerfile=. \
+  --opt target=nvidia \
+  --output type=tar | gzip > ./dist/k3s-nvidia-rootfs.tar.gz
 '@
 
     if ($LASTEXITCODE -ne 0) {

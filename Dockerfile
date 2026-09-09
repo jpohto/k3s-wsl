@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS base
 
 ENV NERDCTL_VERSION=2.3.5
 ENV BUILDKIT_VERSION=0.24.0
@@ -129,3 +129,30 @@ EOF
 
 RUN systemctl enable k3s.service \
     && systemctl enable buildkit.service
+
+FROM base AS nvidia
+
+RUN curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+    && curl -sL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list \
+    && apt-get update && apt-get install -y nvidia-container-toolkit \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /etc/rancher/k3s \
+    && echo "default-runtime: nvidia" | tee /etc/rancher/k3s/config.yaml
+
+COPY --chmod=0755 <<'EOF' /etc/wsl-oobe.d/nvdp.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Installing NVIDIA device plugin Helm chart..."
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+helm upgrade -i nvdp nvdp/nvidia-device-plugin \
+  --namespace nvidia-device-plugin \
+  --create-namespace \
+  --set gfd.enabled=false \
+  --set nfd.enabled=false \
+  --set affinity.nodeAffinity=null
+EOF
