@@ -11,14 +11,23 @@ nvidia-smi:
 pytorch-cuda:
 	$(NERDCTL) build -t pytorch-cuda:$(TAG) --target pytorch .
 
+ollama:
+	$(NERDCTL) build -t ollama:$(TAG) --target ollama .
+
 apply-nvidia-smi:
 	kubectl apply -f nvidia-smi.yaml
 
 apply-pytorch-cuda:
 	kubectl apply -f pytorch-cuda.yaml
 
+apply-ollama:
+	kubectl apply -f ollama.yaml
+
 delete-nvidia-smi:
 	kubectl delete -f nvidia-smi.yaml
 
 delete-pytorch-cuda:
 	kubectl delete -f pytorch-cuda.yaml
+
+delete-ollama:
+	kubectl delete -f ollama.yaml

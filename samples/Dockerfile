@@ -15,3 +15,15 @@ RUN python3 -m venv /opt/venv && . /opt/venv/bin/activate && \
 
 ENV PATH="/opt/venv/bin:$PATH"
 CMD ["python3", "-c", "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0));"]
+
+FROM debian:bookworm AS ollama
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl zstd \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+ENV OLLAMA_MODELS=/data/models
+CMD ["ollama serve"]
