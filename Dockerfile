@@ -17,7 +17,7 @@ ENV LANGUAGE=en_US:fi
 RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables curl ca-certificates sudo \
     policykit-1 systemd systemd-sysv libpam-systemd dbus \
-    gnupg2 jq git \
+    gnupg2 jq git yq \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fL https://get.k3s.io | \
