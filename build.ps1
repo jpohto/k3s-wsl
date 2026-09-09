@@ -63,6 +63,7 @@ for i in {1..30}; do
     sleep 1
 done
 
+mkdir -p ./dist
 buildctl b \
   --frontend dockerfile.v0 \
   --local context=. \
